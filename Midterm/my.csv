@@ -1,0 +1,7 @@
+timestamp,buy/sell type,amount,currency,conversion rate to BTC
+Sat Oct 22 2016 20:41:53  +0000,BUY,10,USD,655.12
+Sat Oct 22 2016 20:41:55  +0000,BUY,1,BTC,
+Sat Oct 22 2016 20:42:17  +0000,BUY,100,USD,655.12
+Sat Oct 22 2016 20:42:23  +0000,SELL,20,BTC,
+Sat Oct 22 2016 20:42:28  +0000,SELL,11,EUR,602.46
+Sat Oct 22 2016 20:42:39  +0000,SELL,12,ETC,637.186441
