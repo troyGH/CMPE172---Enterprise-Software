@@ -11,10 +11,11 @@ var fs = require('fs'); //for file sync
 var csv = require('fast-csv'); //for csv export, install by entering "npm install fast-csv"
 var uu = require('underscore'); //for map, install by entering "npm install underscore"
 var moment = require('moment'); //for time display, install by entering "npm install moment"
+const util = require('util'); //for string format
 
-//Glboal variables
+//Globol variables
 var exchange_rates = {}; //coinbase exchange rates
-var order = []; //storing all orders of the current session
+var orders = []; //storing all orders of the current session
 var currencyList = []; //storing all currencies user enters
 
 initialize(); //get coinbase data to reduce lag
@@ -27,15 +28,40 @@ function myEval(cmd, context, filename, callback) {
   var arr = cmd.split(" "); //convert commands into an array
 
   switch(arr[0]){ //match command
-    case (arr[0].match(/BUY/) || {}).input: buy(arr); break;
-    case (arr[0].match(/SELL/) || {}).input: sell(arr); break;
-    case (arr[0].match(/ORDERS/) || {}).input: orders(); break;
-    case (arr[0].match(/HELP/) || {}).input: console.log("Available commands: \n1. BUY <amount> [currency] \n2. SELL <amount> [currency] \n3. ORDERS \n4. EXIT"); break;
-    case (arr[0].match(/EXIT/) || {}).input: console.log("Bye");process.exit(0); break;
-    default: console.log("Error..Try Again"); break;
+    case (arr[0].match(/SELL/) || arr[0].match(/BUY/) || {}).input: {
+      //Validation
+      if(cmd.length < 2){ //Check if BUY <amount> is entered or BUY <amount> [currency]
+        callback("No amount specified.");
+        break;
+      }
+      var amount = parseFloat(arr[1]);
+      if(amount <= 0 || isNaN(amount)){ //Check if <amount> is valid
+        callback("No valid amount specified.");
+        break;
+      }
+      //queueing order
+      order(arr[0], amount, (arr[2])?arr[2]:"BTC", callback);
+      break;
+    }//end BUY/SELL case
+    case (arr[0].match(/ORDERS/) || {}).input:{
+      callback(save());
+      break;
+    }//end ORDERS case
+    case (arr[0].match(/HELP/) || {}).input: {
+      callback("Available commands: \n1. BUY <amount> [currency] \n2. SELL <amount> [currency] \n3. ORDERS \n4. EXIT");
+      break;
+    } // end HELP case
+    case (arr[0].match(/EXIT/) || {}).input: {
+      callback("Bye");process.exit(0);
+      break;
+    }//end EXIT case
+    default: {
+      callback("Error..Try Again");
+      break;
+    }//end default case
   }
-  this.displayPrompt(); // displaying >
-}
+  this.displayPrompt(); // displaying coinbase>
+} //end myEval
 
 //get currencies and exchange rates and store it inside objects
 function initialize(){
@@ -52,30 +78,15 @@ function initialize(){
 	Otherwise it will place an order to buy as many BTC as the <amount> and display a message “Order to BUY 10 BTC queued”
 	Currency is not valid. For example BUY 10 UCD. Display a message “No known exchange rate for BTC/UCD. Order failed”.
 	If <amount> is invalid. Display a message “No amount specified”.
+SELL <amount> <currency> - same as BUY
 */
-function buy(cmd){
+function order(type, amount, currency, callback){
   try{
-
-    if(cmd.length < 2){ //Check if BUY <amount> is entered or BUY <amount> [currency]
-      console.log("No amount specified.");
-      return;
-    }
-
-    var amountStr = cmd[1];
-    var currency = "BTC";
-    var amount = parseFloat(amountStr);
-
-    if(amount <= 0 || isNaN(amount)){ //Check if <amount> is valid
-      console.log("No valid amount specified.");
-      return;
-    }
-
-    if(cmd[2]) { //check if [currency] is entered
-      var currency = cmd[2];
-      var key = "btc_to_"+currency.toLowerCase();
+    if(currency != "BTC") { //check if [currency] is entered
+      var key = "btc_to_" + currency.toLowerCase();
 
       if(isNaN(exchange_rates[key])){ //if rate is NaN, that means input currency is invalid
-        console.log("No known exchange rate for BTC/%s. Order Failed.", currency);
+        callback(util.format("No known exchange rate for BTC/%s. Order Failed.", currency));
         return;
       }
       else{
@@ -84,75 +95,24 @@ function buy(cmd){
         }
         var rate = parseFloat(exchange_rates[key]);
 
-        console.log("Order to %s %s %s worth of BTC queued @ %d BTC/%s (%d BTC)", cmd[0], cmd[1], currency, rate.toFixed(2), currency, amount/rate);
+        callback(util.format("Order to %s %s %s worth of BTC queued @ %d BTC/%s (%d BTC)", type, amount, currency, rate.toFixed(2), currency, amount/rate));
       }
 
     }
     else{
-      console.log("Order of %s %s %s queued.", cmd[0], cmd[1], currency);
+      callback(util.format("Order of %s %s %s queued.", type, amount, currency));
     }
 
-    order.push({ //store info for saving later
+    orders.push({ //store info for saving later
       timestamp: moment().format('ddd MMM DD YYYY HH:mm:ss zz ZZ'),
-      type: "BUY",
+      type: type,
       amount: amount,
       currency: currency,
       rate: rate
     });
-  }catch(err){
-    //console.log("Error Executing. Try entering BUY <amount> [currency]");
-    console.log(err.message);
-  }
-}
-
-//Same rules apply as BUY
-function sell(cmd){
-  try{
-    if(cmd.length < 2){ //Check if SELL <amount> is entered or BUY <amount> [currency]
-      console.log("No amount specified.");
-      return;
-    }
-
-    var amountStr = cmd[1];
-    var currency = "BTC";
-
-    var amount = parseFloat(amountStr);
-    if(amount <= 0 || isNaN(amount)){ //Check if <amount> is valid
-      console.log("No valid amount specified.");
-      return;
-    }
-
-    if(cmd[2]) { //check if [currency] is entered
-      var currency = cmd[2];
-      var key = "btc_to_"+currency.toLowerCase();
-
-      if(isNaN(exchange_rates[key])){ //if rate is NaN, that means input currency is invalid
-        console.log("No known exchange rate for BTC/%s. Order Failed.", currency);
-        return;
-      }
-      else{
-        if(currencyList.includes(key) == false){
-          currencyList.push(key);
-        }
-        var rate = parseFloat(exchange_rates[key]);
-
-        console.log("Order to %s %s %s worth of BTC queued @ %d BTC/%s (%d BTC)", cmd[0], cmd[1], currency, rate.toFixed(2), currency, amount/rate);
-      }
-    }
-    else{
-      console.log("Order of %s %s %s queued.", cmd[0], cmd[1], currency);
-    }
-
-    order.push({ //store info for saving later
-      timestamp: moment().format('ddd MMM DD YYYY HH:mm:ss zz ZZ'),
-      type: "SELL",
-      amount: amount,
-      currency: currency,
-      rate: rate,
-    });
 
   }catch(err){
-    console.log("Error Executing. Try entering SELL <amount> [currency]");
+    callback(err.message);
   }
 }
 
@@ -161,15 +121,16 @@ function sell(cmd){
 as well as displays the current orders on console as follows.
 		 === CURRENT ORDERS ===
 Wed Oct 05 2016 22:09:40 GMT+0000 (UTC) : BUY 10 : UNFILLED
-
 */
-function orders(){
+function save(){
   try{
+    var orderDetails = "";//string for the entire result
     uu.each(currencyList, function(currency){
-      console.log("CURRENT %s: %d", currency.toUpperCase(), exchange_rates[currency]);
+      orderDetails += util.format("CURRENT %s: %d\n", currency.toUpperCase(), exchange_rates[currency]);
     });
+
     //transforming orders list to better format for csv
-    var transformedOrders = uu.map(order, function(item){
+    var transformedOrders = uu.map(orders, function(item){
       return { "timestamp": item.timestamp,
               "buy/sell type": item.type,
               "amount": item.amount,
@@ -183,11 +144,12 @@ function orders(){
     //use fast-csv write function to write the orders and pipe it to writable stream used to create a csv of unknown size
     csv.write(transformedOrders, {headers :true}).pipe(writableStream);
 
-    console.log("\t\t=== CURRENT ORDERS ===");
-    uu.each(order, function(item){
-      console.log("%s (UTC) : %s %s %s: UNFILLED", item.timestamp, item.type, item.currency, item.amount);
+    orderDetails += util.format("\n\t\t=== CURRENT ORDERS ===\n");
+    uu.each(orders, function(item){
+      orderDetails += util.format("%s (UTC) : %s %s %s: UNFILLED\n", item.timestamp, item.type, item.currency, item.amount);
     });
 
+    return orderDetails;
   }catch(err){
     console.log(err.message);
   }
